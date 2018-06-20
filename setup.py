@@ -1,14 +1,20 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """Installation and deployment script."""
 
 from __future__ import print_function
+
 import sys
 
 try:
   from setuptools import find_packages, setup
 except ImportError:
   from distutils.core import find_packages, setup
+
+try:
+  from distutils.command.bdist_msi import bdist_msi
+except ImportError:
+  bdist_msi = None
 
 try:
   from distutils.command.bdist_rpm import bdist_rpm
@@ -24,6 +30,21 @@ if sys.version < '2.7':
 sys.path.insert(0, '.')
 
 import dftimewolf  # pylint: disable=wrong-import-position
+
+
+if not bdist_msi:
+  BdistMSICommand = None
+else:
+  class BdistMSICommand(bdist_msi):
+    """Custom handler for the bdist_msi command."""
+
+    def run(self):
+      """Builds an MSI."""
+      # Command bdist_msi does not support the library version, neither a date
+      # as a version but if we suffix it with .1 everything is fine.
+      self.distribution.metadata.version += '.1'
+
+      bdist_msi.run(self)
 
 
 if not bdist_rpm:
@@ -71,15 +92,16 @@ else:
         elif line.startswith('%files'):
           # Cannot use %{_libdir} here since it can expand to "lib64".
           lines = [
-              '%files',
+              '%files -n {0:s}-%{{name}}'.format(python_package),
               '%defattr(644,root,root,755)',
-              '%doc ACKNOWLEDGEMENTS AUTHORS LICENSE README',
-              '%{_prefix}/lib/python*/site-packages/dftimewolf/*.py',
+              '%doc ACKNOWLEDGEMENTS AUTHORS LICENSE',
+              '%{_prefix}/lib/python*/site-packages/**/*.py',
               '%{_prefix}/lib/python*/site-packages/dftimewolf*.egg-info/*',
-              '%exclude %{_prefix}/lib/python*/site-packages/dftimewolf/*.pyc',
-              '%exclude %{_prefix}/lib/python*/site-packages/dftimewolf/*.pyo',
-              ('%exclude %{_prefix}/lib/python*/site-packages/dftimewolf/'
-               '__pycache__/*')]
+              '',
+              '%exclude %{_prefix}/share/doc/*',
+              '%exclude %{_prefix}/lib/python*/site-packages/**/*.pyc',
+              '%exclude %{_prefix}/lib/python*/site-packages/**/*.pyo',
+              '%exclude %{_prefix}/lib/python*/site-packages/**/__pycache__/*']
 
           python_spec_file.extend(lines)
           break
@@ -111,41 +133,34 @@ dftimewolf_description = (
     'Digital forensic orchestration.')
 
 dftimewolf_long_description = (
-    'dfTimeWolf, a framework for orchestrating forensic collection, processing '
-    'and data export.')
+    'dfTimeWolf, a framework for orchestrating forensic collection, processing'
+    ' and data export.')
 
 setup(
     name='dftimewolf',
     version=dftimewolf.__version__,
     description=dftimewolf_description,
     long_description=dftimewolf_long_description,
-    url='https://github.com/log2timeline/dftimewolf',
-    author='DFTimewolf development team',
     license='Apache License, Version 2.0',
-    packages=find_packages(),
+    url='https://github.com/log2timeline/dftimewolf',
+    maintainer='Log2Timeline maintainers',
+    maintainer_email='log2timeline-maintainers@googlegroups.com',
     cmdclass={
+        'bdist_msi': BdistMSICommand,
         'bdist_rpm': BdistRPMCommand},
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 3 - Alpha',
+        'Environment :: Console',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
     ],
-    entry_points={
-        'console_scripts': ['dftimewolf=dftimewolf.cli.dftimewolf_recipes:main']
+    packages=find_packages('.', exclude=[
+        'examples', 'tests', 'tests.*', 'utils']),
+    package_dir={
+        'dftimewolf': 'dftimewolf'
     },
-    data_files=[('dftimewolf', ['dftimewolf/config.json'])],
-    include_package_data=True,
-    zip_safe=False,
-    install_requires=[
-        'pytz',
-        'beautifulsoup4',
-        'requests',
-        'grr_api_client',
+    data_files=[
+        ('share/doc/dftimewolf', [
+            'ACKNOWLEDGEMENTS', 'AUTHORS', 'LICENSE']),
     ],
-    test_suite='nose.collector',
-    test_require=[
-        'beautifulsoup4',
-        'nose',
-        'mock'
-    ]
 )
